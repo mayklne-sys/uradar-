@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AudioRadarFFT — Android (Kotlin)</title>
+  <style>
+    :root{--bg:#0b1220;--ink:#e6f0ff;--muted:#9fb0d0;--card:#0f182a;--acc1:#4fd1c5;--acc2:#60a5fa;}
+    *{box-sizing:border-box} html,body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 system-ui,-apple-system,Segoe UI,Roboto}
+    a{color:var(--acc1);text-decoration:none} a:hover{text-decoration:underline}
+    .wrap{max-width:1000px;margin:0 auto;padding:24px}
+    .hero{display:grid;grid-template-columns:1.2fr 1fr;gap:20px;align-items:center}
+    @media(max-width:900px){.hero{grid-template-columns:1fr}}
+    h1{margin:0 0 6px;font-size:40px}
+    .tag{display:inline-block;padding:6px 10px;border-radius:999px;background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.35);color:#cfe5ff;font-size:13px}
+    .card{background:linear-gradient(180deg,rgba(255,255,255,.04),rgba(255,255,255,.02));border:1px solid rgba(255,255,255,.08);border-radius:16px;padding:16px}
+    .btns{display:flex;gap:10px;margin-top:14px}
+    .btn{display:inline-flex;gap:10px;align-items:center;padding:10px 14px;border-radius:12px;background:#162033;border:1px solid rgba(255,255,255,.14);color:#e6f0ff}
+    .btn.primary{background:linear-gradient(90deg,var(--acc1),var(--acc2));color:#0b1220;border:none;font-weight:700}
+    .muted{color:var(--muted)}
+    .grid{display:grid;gap:14px}
+    .grid.cols-3{grid-template-columns:repeat(3,1fr)}
+    .grid.cols-2{grid-template-columns:repeat(2,1fr)}
+    pre{background:#0a1322;border:1px solid #13213a;border-radius:12px;padding:12px;overflow:auto}
+    .kbd{font-family:ui-monospace,Menlo,Consolas,monospace;background:#0a1322;border:1px solid #13213a;padding:2px 6px;border-radius:6px}
+    canvas{display:block;width:100%;height:auto;background:#08101d;border-radius:12px}
+    .foot{margin-top:24px;text-align:center;color:var(--muted);font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="hero">
+      <div>
+        <span class="tag">Android • Kotlin • DSP • FFT</span>
+        <h1>AudioRadarFFT</h1>
+        <p class="muted">Чирп (18→16 кГц) → микрофон → полосовой фильтр → FFT‑корреляция → SNR → дистанция. CameraX как видоискатель, вибро при уверенном пике.</p>
+        <div class="btns">
+          <a class="btn primary" href="AudioRadarFFT_Complete_Project.zip">Скачать проект (ZIP)</a>
+          <a class="btn" href="#build">Инструкция по сборке</a>
+        </div>
+      </div>
+      <div class="card"><canvas id="radar" width="520" height="320"></canvas></div>
+    </div>
+
+    <div class="grid cols-3" style="margin-top:24px">
+      <div class="card"><b>Стабильность</b><br><span class="muted">BPF x2 (16–18 кГц) + minLag≈3 мс отсекают прямую наводку и шум.</span></div>
+      <div class="card"><b>Скорость</b><br><span class="muted">FFT‑корреляция O(N log N), переиспользование буферов снижает GC.</span></div>
+      <div class="card"><b>Фидбек</b><br><span class="muted">SNR по коррелограмме, вибро >6 дБ, CameraX‑превью.</span></div>
+    </div>
+
+    <div class="card" style="margin-top:24px">
+      <h2 id="build">Сборка</h2>
+      <div class="grid cols-2">
+        <div>
+          <h3>Android Studio</h3>
+          <ol>
+            <li>Распакуйте <span class="kbd">AudioRadarFFT_Complete_Project.zip</span>.</li>
+            <li><span class="kbd">File → Open…</span> → выберите папку проекта.</li>
+            <li>Дождитесь синхронизации Gradle.</li>
+            <li><span class="kbd">Build → Build APK(s)</span> → <span class="kbd">app/build/outputs/apk/debug/app-debug.apk</span></li>
+          </ol>
+        </div>
+        <div>
+          <h3>CLI</h3>
+          <pre><code>./gradlew assembleDebug
+./gradlew assembleRelease   # релиз, требует подписания</code></pre>
+        </div>
+      </div>
+      <p class="muted">Требования: Android SDK 34, JDK 17, Kotlin 1.9, AGP 8.5.</p>
+    </div>
+
+    <div class="foot">© AudioRadarFFT • Обновлено: <span id="ts"></span></div>
+  </div>
+
+  <script>
+    // Простая анимация «радара»
+    const c = document.getElementById('radar'); const ctx = c.getContext('2d'); let t = 0;
+    function draw(){
+      const w=c.width,h=c.height, cx=w*0.5, cy=h*0.65, R=Math.min(w,h)*0.48;
+      ctx.clearRect(0,0,w,h);
+      // кольца
+      for(let i=1;i<=4;i++){ ctx.beginPath(); ctx.arc(cx,cy,(R*i)/4,0,Math.PI*2);
+        ctx.strokeStyle='rgba(160,200,255,0.18)'; ctx.lineWidth=1; ctx.stroke(); }
+      // крест
+      ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy); ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R);
+      ctx.strokeStyle='rgba(160,200,255,0.12)'; ctx.stroke();
+      // луч
+      const ang=(t*0.02)%(Math.PI*2), sweep=Math.PI/18;
+      const grad=ctx.createRadialGradient(cx,cy,0,cx,cy,R);
+      grad.addColorStop(0,'rgba(79,209,197,0.35)'); grad.addColorStop(1,'rgba(96,165,250,0.0)');
+      ctx.beginPath(); ctx.moveTo(cx,cy); ctx.arc(cx,cy,R,ang-sweep,ang+sweep); ctx.closePath();
+      ctx.fillStyle=grad; ctx.fill();
+      // точка
+      const r=R*0.55, ax=cx+r*Math.cos(ang*0.8), ay=cy+r*Math.sin(ang*0.8);
+      ctx.beginPath(); ctx.arc(ax,ay,4,0,Math.PI*2); ctx.fillStyle='#4fd1c5'; ctx.fill();
+      t++; requestAnimationFrame(draw);
+    }
+    draw();
+    document.getElementById('ts').textContent=new Date().toLocaleString();
+  </script>
+</body>
+</html>
